@@ -1,4 +1,4 @@
-# legacy-awx-ee
+# aap-ee-legacy-py26
 
 Execution Environment (EE) para o **Ansible Automation Platform (AAP)** moderno
 com suporte a managed nodes que ainda executam **Python 2.6** (ex.: RHEL 5/6).
