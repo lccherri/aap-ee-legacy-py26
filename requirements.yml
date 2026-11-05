@@ -1,0 +1,20 @@
+---
+# requirements.yml
+#
+# Vazio de propósito: o "ansible>=5.0.0,<6.0.0" no requirements.txt já
+# instala o pacote community completo (community.general, ansible.posix,
+# community.crypto, etc. - o mesmo conjunto que vinha embutido no
+# ansible==2.9.14 do AWX antigo, só que organizado em collections).
+#
+# Só adicione aqui se:
+#   a) uma automação específica precisar de uma collection FORA do
+#      conjunto padrão do Ansible 5.x, ou
+#   b) precisar fixar uma versão de collection diferente da que o
+#      Ansible 5.x traz por padrão (raro, e pode gerar conflito de
+#      dependência com o próprio pacote "ansible" - teste antes).
+#
+# collections:
+#   - name: community.general
+#     version: "4.8.0"   # última 4.x, compatível com o trilho do Ansible 5.x
+
+collections: []

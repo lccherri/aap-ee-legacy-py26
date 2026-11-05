@@ -1,0 +1,39 @@
+# bindep.txt
+# Pacotes de sistema para o base image quay.io/centos/centos:stream9
+
+# --- Toolchain de build ---
+gcc [platform:rpm]
+gcc-c++ [platform:rpm]
+python3-devel [platform:rpm]
+make [platform:rpm]
+
+# --- Bindings de sistema (substituem rpm==/selinux== do pip freeze antigo) ---
+python3-rpm [platform:rpm]
+python3-libselinux [platform:redhat]
+python3-libsemanage [platform:redhat]
+
+# --- cryptography (compilação C: OpenSSL + libffi) ---
+openssl-devel [platform:rpm]
+libffi-devel [platform:rpm]
+
+# --- libpq-devel só é necessário se voltar a usar "psycopg2" (não -binary) ---
+libpq-devel [platform:rpm]
+
+# --- pykerberos / requests-ntlm / pywinrm (autenticação Kerberos) ---
+krb5-devel [platform:rpm]
+krb5-workstation [platform:rpm]
+
+# --- PyNaCl / bcrypt (libsodium) ---
+libsodium-devel [platform:rpm]
+
+# --- python-gpg (bindings GPGME) ---
+swig [platform:rpm]
+gpgme-devel [platform:rpm]
+
+# --- cyrus-sasl (usado por libs de autenticação) ---
+cyrus-sasl-devel [platform:rpm]
+
+# --- Utilitários usados em tempo de build/execução por módulos comuns ---
+git-core [platform:rpm]
+openssh-clients [platform:rpm]
+rsync [platform:rpm]

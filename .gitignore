@@ -1,0 +1,26 @@
+# Relatório de dependências extraído da origem (não entra no build)
+awx_deps_report_docker.txt
+
+# Saída gerada pelo ansible-builder
+context/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs e temporários
+*.log
+*.tmp

@@ -1,0 +1,157 @@
+---
+# execution-environment.yml
+#
+# Objetivo: UMA ÚNICA EE, usável num AAP moderno, que ainda consiga
+# gerenciar hosts com Python 2.6 nos managed nodes.
+#
+# Decisão de versão:
+#   ansible-core 2.13 removeu suporte a Python 2.6 nos managed nodes.
+#   ansible-core 2.12 foi a ÚLTIMA versão que ainda suporta.
+#   O pacote "ansible" (community, batteries-included) 5.x = ansible-core 2.12.
+#   -> Por isso pinamos "ansible==5.*" em vez de "ansible-core" puro:
+#      já traz as collections community embutidas, sem precisar remontar
+#      manualmente o que o ansible==2.9.14 antigo já te dava de graça.
+#
+# ATENÇÃO: ansible 5.x / ansible-core 2.12 estão EOL desde ~2022, sem
+# patches de CVE. Uso consciente, restrito aos Job Templates/Organizações
+# que realmente precisam falar com hosts Python 2.6.
+#
+# Base image: UBI9 (Universal Base Image) -> Python 3.9 por padrão, dentro
+# da janela de controle suportada pelo ansible-core 2.12 (mínimo Python 3.8
+# no control node, e a control-node support window da época cobria 3.8-3.10).
+#
+# UBI9 em vez de CentOS Stream 9: UBI é o rebuild oficial da Red Hat pra
+# redistribuição livre (EULA específico da UBI permite publicar a imagem
+# resultante mesmo em registro público, ex. Quay.io público - diferente de
+# imagens vindas de registry.redhat.io, cujo EULA de assinatura normalmente
+# proíbe redistribuir pra quem não tem entitlement). CentOS Stream 9 é o
+# branch de desenvolvimento à frente do RHEL9, não o RHEL9 propriamente.
+# Usamos "ubi9/ubi" (completa, com dnf) em vez de "ubi9-minimal" (só
+# microdnf) pra manter a receita abaixo próxima do que já era usado com
+# CentOS Stream - "ubi9-minimal" exigiria reescrever prepend_base pra
+# sintaxe do microdnf ou bootstrapar o dnf primeiro.
+#
+# IMPORTANTE: isso não muda o status de suporte do ansible-core 2.12 em si
+# - ele já está EOL desde ~2022 independente da imagem base. Trocar pra UBI
+# só resolve a proveniência/redistribuição da camada de SO.
+#
+# Build: ansible-builder build -f execution-environment.yml -t meu-registro/aap-ee-legacy-py26:1.0
+#
+# Schema v3 (ansible-builder >= 3.0): a imagem base é declarada em
+# "images.base_image.name", não mais em "build_arg_defaults.EE_BASE_IMAGE"
+# (isso só existe no schema v1). As chaves granulares de
+# additional_build_steps (prepend_base/append_final) também só existem
+# a partir do schema v3 - por isso "version: 3" abaixo.
+
+version: 3
+
+images:
+  base_image:
+    name: 'registry.access.redhat.com/ubi9/ubi:latest'
+
+dependencies:
+  python: requirements.txt
+  system: bindep.txt
+  # A imagem base (CentOS Stream 9 puro) não vem com Ansible instalado.
+  # No schema v3, "check_ansible" roda no INÍCIO do estágio final, antes de
+  # qualquer coisa do requirements.txt ser instalada nesse estágio - então
+  # sem isso aqui o build quebra com "ansible: command not found" mesmo
+  # com "ansible" listado no requirements.txt. Este "ansible_core" é o
+  # mecanismo oficial do schema v3 pra pré-instalar o Ansible no estágio
+  # base. Mantém o mesmo pin do requirements.txt (fonte única da versão).
+  ansible_core:
+    package_pip: 'ansible>=5.0.0,<6.0.0'
+  # ansible-runner é o processo que o AAP/controller usa pra efetivamente
+  # invocar o playbook dentro da EE (não é opcional pra uso real no AAP,
+  # mesmo não constando no pip freeze do awx_task antigo - lá quem fazia
+  # esse papel era o próprio processo awx_task/supervisor, que não existe
+  # mais nesse modelo de EE).
+  #
+  # PINADO em <=2.4.2 (testado): a partir do 2.4.3, o callback awx_display
+  # (usado pelo AAP/Receptor pra streamar o output do job) quebra contra
+  # ansible-core 2.12 com "TypeError: unsupported operand type(s) for |:
+  # 'NoneType' and 'AnsibleMapping'" em set_options() - ansible-runner
+  # 2.4.3+ assume um comportamento do C.config.get_configuration_definition()
+  # que o ansible-core 2.12 não tem. Só aparece rodando via ansible-runner/
+  # AWX de verdade (com o callback awx_display ativo) - "ansible" direto
+  # via CLI não reproduz, por isso passou batido na validação manual.
+  # Testado 2.2.0 a 2.4.2 (todos OK) e 2.4.3 (quebra) - usando o mais novo
+  # confirmado.
+  ansible_runner:
+    package_pip: 'ansible-runner==2.4.2'
+  # "galaxy: requirements.yml" fica DE FORA de propósito: no schema v3, só
+  # a PRESENÇA desta chave já faz o ansible-builder gerar um estágio de
+  # build extra que roda "ansible-galaxy" ANTES de instalar o pacote
+  # "ansible" via pip - e nesse ponto do build ainda não existe ansible-core
+  # na imagem, então o build quebra (mesmo com requirements.yml vazio).
+  # Como o "ansible==5.*" do requirements.txt já traz as collections
+  # community embutidas, não há nada pra instalar via galaxy. Se um dia
+  # popular o requirements.yml com uma collection extra, terá que voltar
+  # a referenciar essa chave e, aí sim, configurar dependencies.ansible_core
+  # (ou um additional_build_steps.prepend_galaxy) pra garantir que o
+  # ansible-galaxy exista antes desse estágio rodar.
+
+additional_build_steps:
+  prepend_base:
+    # gpgme-devel e swig (usados pelo binding python-gpg, ver bindep.txt)
+    # vivem no repositório CodeReady Builder - diferente do CentOS Stream 9
+    # (onde o repo "crb" vem desabilitado), na imagem UBI9 o repo
+    # "ubi-9-codeready-builder-rpms" já vem HABILITADO por padrão
+    # (confirmado com "dnf repolist --all"), então não precisa habilitar
+    # nada aqui.
+    #
+    # swig especificamente também está atrás de um MÓDULO dnf (swig:4.1)
+    # nesse repo - diferente do CentOS Stream 9, que expunha como pacote
+    # normal. Sem habilitar o módulo, o assemble falha com "All matches
+    # were filtered out by modular filtering for argument: swig".
+    #
+    # epel-release: instalado direto da URL do projeto Fedora (em vez do
+    # nome de pacote "epel-release") porque a UBI, diferente do CentOS
+    # Stream, não tem esse pacote pré-empacotado em nenhum repo próprio -
+    # só o próprio RPM hospedado pelo Fedora, que funciona em qualquer
+    # sistema ABI-compatível com RHEL9 (RHEL, CentOS Stream, UBI, Rocky...).
+    # Necessário só pro libsodium-devel (PyNaCl/bcrypt), que nunca foi
+    # promovido pro RHEL/CRB.
+    - RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && dnf module enable -y swig:4.1 && dnf clean all
+  append_final:
+    # Hosts realmente antigos (RHEL5/6-era) só falam KEX/host-key SHA-1
+    # (diffie-hellman-group14-sha1 etc.) e algoritmos que o OpenSSL 3.x
+    # desta imagem recusa por padrão ("error in libcrypto" / "invalid
+    # digest" na assinatura SHA-1 do host key) - descoberto testando de
+    # verdade contra um host RHEL5. Sem isso, TODO job contra esses hosts
+    # falha na conexão SSH antes mesmo de chegar no Python do host.
+    #
+    # Embutido na imagem (em vez de exigir que cada Job Template configure
+    # isso manualmente) porque é uma característica fixa desta EE - ela só
+    # é usada pra hosts legados mesmo (ver escopo de uso no README), então
+    # habilitar o provider "legacy" globalmente aqui é seguro: ele só
+    # ADICIONA opções mais fracas à disposição do OpenSSL, não força nada,
+    # não quebra conexões com hosts modernos que essa EE também precise
+    # tocar.
+    #
+    # Os "-o KexAlgorithms=... HostKeyAlgorithms=... PubkeyAcceptedAlgorithms=
+    # ..." do lado do SSH também vêm embutidos como PADRÃO aqui (ansible.cfg),
+    # em vez de exigir variável de grupo/host no inventário pra cada host.
+    # Decisão: essa EE substitui um AWX inteiro dedicado só a hosts legados
+    # (majoritariamente RHEL5) - e a Red Hat não reboisa o OpenSSH dentro do
+    # ciclo de vida de uma major release, só faz backport de CVE. Ou seja,
+    # todo RHEL5 do parque tende a oferecer o mesmíssimo conjunto de
+    # algoritmos, então um único padrão cobre a esmagadora maioria dos hosts.
+    #
+    # Usamos "ssh_common_args" (não "ssh_args") de propósito: "ssh_args"
+    # SUBSTITUI o default do ansible-core (-C -o ControlMaster=auto -o
+    # ControlPersist=60s), o que perderia multiplexação/compressão de conexão
+    # à toa. "ssh_common_args" é ADITIVO - some com o default em vez de
+    # substituir - e é exatamente o mesmo mecanismo por trás da variável de
+    # inventário "ansible_ssh_common_args", que tem precedência sobre isso
+    # aqui. Ou seja: cobre o caso comum por padrão, e ainda dá pra sobrescrever
+    # pontualmente num host/grupo específico que fugir do padrão (ex: sshd
+    # com Ciphers/KexAlgorithms customizados manualmente). Ver README.
+    - RUN mkdir -p /etc/ansible && printf '[ssh_connection]\nssh_common_args = -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa\n' > /etc/ansible/ansible.cfg
+    - RUN printf 'openssl_conf = openssl_init\n\n[openssl_init]\nproviders = provider_sect\nalg_section = algorithm_sect\n\n[provider_sect]\ndefault = default_sect\nlegacy = legacy_sect\n\n[default_sect]\nactivate = 1\n\n[legacy_sect]\nactivate = 1\n\n[algorithm_sect]\nrh-allow-sha1-signatures = yes\n' > /etc/pki/tls/legacy-ssh-openssl.cnf
+    - ENV OPENSSL_CONF=/etc/pki/tls/legacy-ssh-openssl.cnf
+    - RUN python3 --version && ansible --version
+    - RUN python3 -c "import selinux" && echo "selinux binding OK"
+    - RUN python3 -c "import rpm" && echo "rpm binding OK"
+    - RUN echo "OPENSSL_CONF=$OPENSSL_CONF" && openssl list -providers | grep -i legacy && echo "OpenSSL legacy provider OK"
+    - RUN ansible --version | grep -q '/etc/ansible/ansible.cfg' && grep -q ssh_common_args /etc/ansible/ansible.cfg && echo "ssh_common_args default OK"

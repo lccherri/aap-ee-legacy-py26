@@ -1,0 +1,59 @@
+# requirements.txt
+#
+# ansible==5.* = ansible-core 2.12 = última versão com suporte a Python 2.6
+# nos managed nodes. Isso já traz community.general, ansible.posix, etc.
+# embutidos - não precisa listar collections separadamente.
+ansible>=5.0.0,<6.0.0
+
+# --- Demais libs vistas no pip freeze do awx_task original ---
+#
+# IMPORTANTE: as versões abaixo foram DELIBERADAMENTE deixadas sem pin
+# exato (ao contrário do primeiro rascunho desta EE). O ansible==5.*
+# já define suas próprias versões mínimas de PyYAML, Jinja2, cryptography
+# etc. Se eu tivesse mantido os pins antigos (PyYAML==3.12, Jinja2==2.10.1,
+# cryptography==2.3), o pip teria travado tentando resolver duas exigências
+# conflitantes. Deixando sem pin, o pip resolve a versão mais nova
+# compatível com o que o ansible 5.x exige.
+
+asn1crypto
+Babel
+bcrypt
+cffi
+cryptography
+dnspython
+gpg
+idna
+jmespath
+ntlm-auth
+paramiko
+ply
+psycopg2-binary
+pyasn1
+pycparser
+pykerberos
+PyNaCl
+python-dateutil
+pytz
+pywinrm
+requests
+requests-ntlm
+six
+urllib3
+xmltodict
+
+# jmespath: NÃO é dependência transitiva do pacote "ansible" (diferente de
+# PyYAML/Jinja2/certifi, que vêm de graça). Usado pelo filtro json_query,
+# comum em playbooks legados - estava no pip freeze original do awx_task
+# e sem ele o filtro falha silenciosamente em tempo de execução.
+#
+# Removidos deste arquivo (não são pacotes PyPI - vão para bindep.txt):
+#   rpm==4.14.2   -> pacote de sistema python3-rpm
+#   selinux==2.9  -> pacote de sistema python3-libselinux / python3-libsemanage
+#
+# Removidos por serem específicos do processo AWX antigo, não do runtime
+# de playbook (supervisor, virtualenv).
+#
+# psycopg2 trocado por psycopg2-binary: evita depender de libpq-devel no
+# ambiente de execução final (a versão -binary já embute o driver
+# compilado). Se preferir compilar contra a libpq do sistema, troque de
+# volta para "psycopg2" - o bindep.txt já tem libpq-devel para essa opção.
