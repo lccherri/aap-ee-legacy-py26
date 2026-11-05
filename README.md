@@ -1,4 +1,4 @@
-# Procedimento: build da EE única (AAP moderno + retrocompatibilidade Python 2.6)
+# Execution Environment AAP + Retrocompatibilidade Python 2.6
 
 ## 1. Instalar o ansible-builder
 
